@@ -59,6 +59,7 @@ class Medicine {
     this.quantity = 0,
     this.unit = 'units',
     this.imagePath,
+    this.uses = '',
     required this.createdAt,
   });
 
@@ -75,6 +76,10 @@ class Medicine {
   final int quantity;
   final String unit;
   final String? imagePath;
+
+  /// What the medicine is commonly used for, e.g. "Fever and mild pain".
+  /// General information only, shown with a "not medical advice" note.
+  final String uses;
   final DateTime createdAt;
 
   static const soonThresholdDays = 60;
@@ -133,6 +138,7 @@ class Medicine {
     int? quantity,
     String? unit,
     String? imagePath,
+    String? uses,
   }) =>
       Medicine(
         id: id ?? this.id,
@@ -145,6 +151,7 @@ class Medicine {
         quantity: quantity ?? this.quantity,
         unit: unit ?? this.unit,
         imagePath: imagePath ?? this.imagePath,
+        uses: uses ?? this.uses,
         createdAt: createdAt,
       );
 
@@ -159,6 +166,7 @@ class Medicine {
         'quantity': quantity,
         'unit': unit,
         'image_path': imagePath,
+        'uses': uses,
         'created_at': createdAt.toIso8601String(),
       };
 
@@ -175,6 +183,7 @@ class Medicine {
         quantity: map['quantity'] as int? ?? 0,
         unit: map['unit'] as String? ?? 'units',
         imagePath: map['image_path'] as String?,
+        uses: map['uses'] as String? ?? '',
         createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
       );
 }
@@ -190,6 +199,11 @@ DateTime? parseYearMonth(String? value) {
   if (month < 1 || month > 12) return null;
   return DateTime(int.parse(m.group(1)!), month);
 }
+
+/// "1 tablet", "3 tablets", "5 ml".
+String qty(int n, String unit) => '$n ${n == 1 && unit.endsWith('s') ? unit.substring(0, unit.length - 1) : unit}';
+
+String formatDay(DateTime d) => '${d.day} ${monthNames[d.month - 1]} ${d.year}';
 
 String formatExpiry(DateTime? d) => d == null ? 'No expiry' : '${monthNames[d.month - 1]} ${d.year}';
 

@@ -1,22 +1,11 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:http/http.dart' as http;
-
 import '../models/medicine.dart';
+import 'claude_client.dart';
 
-/// Reads a medicine label photo with Claude's vision model and returns
-/// structured fields.
-///
-/// PROTOTYPE ONLY: the API key is compiled into the app. Before shipping,
-/// move this call behind your own backend so the key never reaches devices.
+/// Reads a medicine pack photo with Claude's vision model.
 class ClaudeLabelReader {
-  ClaudeLabelReader({required this.apiKey, http.Client? client}) : _client = client ?? http.Client();
+  ClaudeLabelReader(this._claude);
 
-  final String apiKey;
-  final http.Client _client;
-
-  static const model = 'claude-opus-5-5';
+  final ClaudeClient _claude;
 
   static const _prompt = '''
 This is a photo of a medicine pack sold in India (blister strip, box, bottle or tube).
@@ -27,94 +16,36 @@ Read the printed text and extract the fields in the schema.
 - expiry: the expiry date as YYYY-MM. Indian packs print it as "EXP 03/2027", "Exp. MAR 27" and similar; it is often embossed or faint near the batch number. Do not confuse it with the manufacturing date (MFG/MFD). Use "" if not legible.
 - remaining_count: for a blister strip, count the pockets that still contain a tablet/capsule. Use -1 if you cannot tell.
 - pack_quantity: units in the pack as printed (e.g. "1x15" means 15 per strip, "100 ml" bottle). Use 0 if not printed.
+- common_uses: what this medicine is commonly used for, in at most 10 plain words (e.g. "Fever and mild to moderate pain"), from the pack or the standard uses of its active ingredients. Use "" if unsure.
 - Use "" for any text field you cannot read. Never guess values that are not visible.''';
 
-  static final _schema = {
-    'type': 'object',
-    'additionalProperties': false,
-    'required': [
-      'brand_name', 'ingredients', 'dosage_form', 'expiry', 'batch_number',
-      'manufacturer', 'pack_quantity', 'remaining_count',
-    ],
-    'properties': {
-      'brand_name': {'type': 'string'},
-      'ingredients': {
-        'type': 'array',
-        'items': {
-          'type': 'object',
-          'additionalProperties': false,
-          'required': ['name', 'strength'],
-          'properties': {
-            'name': {'type': 'string'},
-            'strength': {'type': 'string', 'description': 'e.g. "650 mg" or "10 mg/5 ml"'},
-          },
-        },
-      },
-      'dosage_form': {'type': 'string', 'enum': DosageForm.values.map((f) => f.name).toList()},
-      'expiry': {'type': 'string', 'description': 'YYYY-MM or empty'},
-      'batch_number': {'type': 'string'},
-      'manufacturer': {'type': 'string'},
-      'pack_quantity': {'type': 'integer'},
-      'remaining_count': {'type': 'integer'},
+  static final _schema = strictObject({
+    'brand_name': jsonString,
+    'ingredients': {
+      'type': 'array',
+      'items': strictObject({
+        'name': jsonString,
+        'strength': {'type': 'string', 'description': 'e.g. "650 mg" or "10 mg/5 ml"'},
+      }),
     },
-  };
+    'dosage_form': {'type': 'string', 'enum': DosageForm.values.map((f) => f.name).toList()},
+    'expiry': {'type': 'string', 'description': 'YYYY-MM or empty'},
+    'batch_number': jsonString,
+    'manufacturer': jsonString,
+    'pack_quantity': jsonInt,
+    'remaining_count': jsonInt,
+    'common_uses': jsonString,
+  });
 
   Future<Medicine> read(String imagePath) async {
-    final bytes = await File(imagePath).readAsBytes();
-    final mediaType = imagePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-
-    final response = await _client
-        .post(
-          Uri.parse('https://api.anthropic.com/v1/messages'),
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            // If a safety classifier declines, the API retries on a fallback model.
-            'anthropic-beta': 'server-side-fallback-2026-07-01',
-          },
-          body: jsonEncode({
-            'model': model,
-            'max_tokens': 4096,
-            'fallbacks': 'default',
-            'output_config': {
-              // Reading a label is not reasoning-heavy; keep latency low at the pharmacy counter.
-              'effort': 'low',
-              'format': {'type': 'json_schema', 'schema': _schema},
-            },
-            'messages': [
-              {
-                'role': 'user',
-                'content': [
-                  {
-                    'type': 'image',
-                    'source': {'type': 'base64', 'media_type': mediaType, 'data': base64Encode(bytes)},
-                  },
-                  {'type': 'text', 'text': _prompt},
-                ],
-              },
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 90));
-
-    final body = utf8.decode(response.bodyBytes);
-    if (response.statusCode != 200) {
-      throw HttpException('Claude API returned ${response.statusCode}: $body');
-    }
-    final json = jsonDecode(body) as Map<String, dynamic>;
-    final stopReason = json['stop_reason'];
-    if (stopReason == 'refusal' || stopReason == 'max_tokens') {
-      throw HttpException('Claude stopped early ($stopReason)');
-    }
-    final text = (json['content'] as List)
-        .where((block) => block['type'] == 'text')
-        .map((block) => block['text'] as String)
-        .join();
-    return _toMedicine(jsonDecode(text) as Map<String, dynamic>, imagePath);
-  }
-
-  Medicine _toMedicine(Map<String, dynamic> data, String imagePath) {
+    final data = await _claude.extract(
+      content: [await ClaudeClient.fileBlock(imagePath), {'type': 'text', 'text': _prompt}],
+      schema: _schema,
+      // Reading a label is not reasoning-heavy; keep latency low at the pharmacy counter.
+      effort: 'low',
+      maxTokens: 4096,
+      timeout: const Duration(seconds: 90),
+    );
     final form = DosageForm.parse(data['dosage_form'] as String?);
     final remaining = data['remaining_count'] as int? ?? -1;
     final pack = data['pack_quantity'] as int? ?? 0;
@@ -131,7 +62,29 @@ Read the printed text and extract the fields in the schema.
       quantity: remaining >= 0 ? remaining : pack,
       unit: form.unit,
       imagePath: imagePath,
+      uses: (data['common_uses'] as String? ?? '').trim(),
       createdAt: DateTime.now(),
     );
+  }
+
+  /// Looks up common uses for a medicine already in the cabinet (e.g. one
+  /// added by on-device OCR or by hand).
+  Future<String> lookUpUses(Medicine m) async {
+    final data = await _claude.extract(
+      content: [
+        {
+          'type': 'text',
+          'text': 'Medicine sold in India: "${m.brandName}" (${m.form.label})'
+              '${m.ingredients.isEmpty ? '' : ', composition: ${m.compositionSummary}'}.\n'
+              'In at most 10 plain words, what is it commonly used for (e.g. "Fever and mild to moderate pain")? '
+              'Use "" if you do not recognise it.',
+        },
+      ],
+      schema: strictObject({'common_uses': jsonString}),
+      effort: 'low',
+      maxTokens: 1024,
+      timeout: const Duration(seconds: 45),
+    );
+    return (data['common_uses'] as String? ?? '').trim();
   }
 }

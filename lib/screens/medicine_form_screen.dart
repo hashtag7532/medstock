@@ -2,21 +2,23 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../data/medicine_repository.dart';
+import '../app_services.dart';
 import '../models/medicine.dart';
+import '../models/schedule.dart';
 import '../widgets/medicine_widgets.dart';
+import 'schedule_form_screen.dart';
 
 /// Confirm a scanned medicine before saving, or edit/delete an existing one.
 class MedicineFormScreen extends StatefulWidget {
   const MedicineFormScreen({
     super.key,
-    required this.repository,
+    required this.services,
     required this.initial,
     this.matches = const [],
     this.notice,
   });
 
-  final MedicineRepository repository;
+  final AppServices services;
   final Medicine initial;
   final List<StockMatch> matches;
   final String? notice;
@@ -45,18 +47,68 @@ class _MedicineFormScreenState extends State<MedicineFormScreen> {
   late final _batch = TextEditingController(text: widget.initial.batchNumber);
   late final _manufacturer = TextEditingController(text: widget.initial.manufacturer);
   late final _unit = TextEditingController(text: widget.initial.unit);
+  late final _uses = TextEditingController(text: widget.initial.uses);
+  List<DoseSchedule> _schedules = [];
+  bool _lookingUp = false;
   late final _rows = widget.initial.ingredients.map(_IngredientRow.new).toList();
   late DosageForm _form = widget.initial.form;
   late int? _expiryMonth = widget.initial.expiry?.month;
   late int? _expiryYear = widget.initial.expiry?.year;
   late int _quantity = widget.initial.quantity;
+
+  /// False until the user changes the count here; until then the stored
+  /// count wins, since a dose may be marked as taken while this is open.
+  bool _quantityTouched = false;
   bool _saving = false;
 
   bool get _isNew => widget.initial.id == null;
 
   @override
+  void initState() {
+    super.initState();
+    _loadSchedules();
+    widget.services.doses.changes.addListener(_refreshStock);
+  }
+
+  Future<void> _refreshStock() async {
+    final id = widget.initial.id;
+    if (id == null || _quantityTouched) return;
+    final stored = await widget.services.medicines.byId(id);
+    if (stored != null && mounted) setState(() => _quantity = stored.quantity);
+  }
+
+  Future<void> _loadSchedules() async {
+    final id = widget.initial.id;
+    if (id == null) return;
+    final schedules = await widget.services.doses.forMedicine(id);
+    if (mounted) setState(() => _schedules = schedules);
+  }
+
+  Future<void> _openSchedule([DoseSchedule? existing]) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ScheduleFormScreen(services: widget.services, medicine: _build(), existing: existing),
+    ));
+    await _loadSchedules();
+  }
+
+  Future<void> _lookUpUses() async {
+    final reader = widget.services.labelReader;
+    if (reader == null) return;
+    setState(() => _lookingUp = true);
+    try {
+      final uses = await reader.lookUpUses(_build());
+      if (mounted) setState(() => _uses.text = uses);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Look-up failed: $e')));
+    } finally {
+      if (mounted) setState(() => _lookingUp = false);
+    }
+  }
+
+  @override
   void dispose() {
-    for (final c in [_brand, _batch, _manufacturer, _unit]) {
+    widget.services.doses.changes.removeListener(_refreshStock);
+    for (final c in [_brand, _batch, _manufacturer, _unit, _uses]) {
       c.dispose();
     }
     for (final r in _rows) {
@@ -79,13 +131,20 @@ class _MedicineFormScreenState extends State<MedicineFormScreen> {
         quantity: _quantity,
         unit: _unit.text.trim().isEmpty ? _form.unit : _unit.text.trim(),
         imagePath: widget.initial.imagePath,
+        uses: _uses.text.trim(),
         createdAt: widget.initial.createdAt,
       );
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-    await widget.repository.save(_build());
+    var medicine = _build();
+    final id = medicine.id;
+    if (id != null && !_quantityTouched) {
+      final stored = await widget.services.medicines.byId(id);
+      if (stored != null) medicine = medicine.copyWith(quantity: stored.quantity);
+    }
+    await widget.services.medicines.save(medicine);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -102,7 +161,8 @@ class _MedicineFormScreenState extends State<MedicineFormScreen> {
       ),
     );
     if (confirmed != true) return;
-    await widget.repository.delete(widget.initial);
+    await widget.services.medicines.delete(widget.initial);
+    await widget.services.doses.rescheduleAll();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -195,13 +255,21 @@ class _MedicineFormScreenState extends State<MedicineFormScreen> {
             Row(children: [
               IconButton.filledTonal(
                 icon: const Icon(Icons.remove),
-                onPressed: _quantity > 0 ? () => setState(() => _quantity--) : null,
+                onPressed: _quantity > 0
+                    ? () => setState(() {
+                          _quantity--;
+                          _quantityTouched = true;
+                        })
+                    : null,
               ),
               SizedBox(
                 width: 64,
                 child: Text('$_quantity', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
               ),
-              IconButton.filledTonal(icon: const Icon(Icons.add), onPressed: () => setState(() => _quantity++)),
+              IconButton.filledTonal(icon: const Icon(Icons.add), onPressed: () => setState(() {
+                        _quantity++;
+                        _quantityTouched = true;
+                      })),
               const SizedBox(width: 16),
               Expanded(child: TextField(controller: _unit, decoration: const InputDecoration(labelText: 'Unit'))),
             ]),
@@ -244,6 +312,46 @@ class _MedicineFormScreenState extends State<MedicineFormScreen> {
             TextField(controller: _batch, decoration: const InputDecoration(labelText: 'Batch number')),
             const SizedBox(height: 12),
             TextField(controller: _manufacturer, decoration: const InputDecoration(labelText: 'Manufacturer')),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _uses,
+              decoration: InputDecoration(
+                labelText: 'Commonly used for',
+                hintText: 'e.g. Fever and mild pain',
+                helperText: 'General information, not medical advice',
+                suffixIcon: widget.services.hasAi
+                    ? (_lookingUp
+                        ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))
+                        : IconButton(tooltip: 'Look up', icon: const Icon(Icons.auto_awesome_outlined), onPressed: _lookUpUses))
+                    : null,
+              ),
+            ),
+            if (!_isNew) ...[
+              const SizedBox(height: 24),
+              Row(children: [
+                Expanded(child: Text('Dose schedule', style: theme.textTheme.titleSmall)),
+                TextButton.icon(
+                  icon: const Icon(Icons.alarm_add_outlined),
+                  label: const Text('Add schedule'),
+                  onPressed: () => _openSchedule(),
+                ),
+              ]),
+              if (_schedules.isEmpty)
+                Text('No schedule. Add one to get reminders and track what is left.', style: theme.textTheme.bodySmall),
+              for (final s in _schedules)
+                Card(
+                  child: ListTile(
+                    leading: Icon(s.status == ScheduleStatus.active ? Icons.alarm_on_outlined : Icons.alarm_off_outlined),
+                    title: Text('${qty(s.dosePerIntake, _unit.text)} at ${s.times.map((t) => t.label).join(', ')}'),
+                    subtitle: Text([
+                      s.isOngoing ? 'Ongoing' : '${s.durationDays} days from ${s.startDate.day} ${monthNames[s.startDate.month - 1]}',
+                      if (s.instructions.isNotEmpty) s.instructions,
+                      if (s.status != ScheduleStatus.active) s.status.name,
+                    ].join(' · ')),
+                    onTap: s.status == ScheduleStatus.active ? () => _openSchedule(s) : null,
+                  ),
+                ),
+            ],
           ],
         ),
       ),

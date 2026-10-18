@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../data/medicine_repository.dart';
+import '../app_services.dart';
 import '../models/medicine.dart';
-import '../services/extraction_service.dart';
 import 'check_result_screen.dart';
 import 'medicine_form_screen.dart';
 
@@ -16,11 +15,10 @@ enum ScanMode {
 }
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key, required this.mode, required this.repository, required this.extraction});
+  const ScanScreen({super.key, required this.mode, required this.services});
 
   final ScanMode mode;
-  final MedicineRepository repository;
-  final ExtractionService extraction;
+  final AppServices services;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -38,18 +36,18 @@ class _ScanScreenState extends State<ScanScreen> {
       _error = null;
     });
     try {
-      final result = await widget.extraction.extract(picked.path);
-      final matches = await widget.repository.findMatches(result.draft);
+      final result = await widget.services.extraction.extract(picked.path);
+      final matches = await widget.services.medicines.findMatches(result.draft);
       if (!mounted) return;
       await _continueWith(switch (widget.mode) {
         ScanMode.add => MedicineFormScreen(
-            repository: widget.repository,
+            services: widget.services,
             initial: result.draft,
             matches: matches,
             notice: result.warning ?? 'Read by ${result.source}. Please check every field.',
           ),
         ScanMode.check => CheckResultScreen(
-            repository: widget.repository,
+            services: widget.services,
             scanned: result.draft,
             matches: matches,
           ),
@@ -119,7 +117,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => _continueWith(MedicineFormScreen(
-                      repository: widget.repository,
+                      services: widget.services,
                       initial: Medicine(brandName: '', createdAt: DateTime.now()),
                     )),
                     child: const Text('Enter manually'),
@@ -127,7 +125,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ],
                 const SizedBox(height: 16),
                 Text(
-                  widget.extraction.usesAi ? 'Using AI label reader' : 'Using on-device OCR (works offline)',
+                  widget.services.extraction.usesAi ? 'Using AI label reader' : 'Using on-device OCR (works offline)',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall,
                 ),

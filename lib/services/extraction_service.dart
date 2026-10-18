@@ -19,11 +19,6 @@ class ScanResult {
 class ExtractionService {
   ExtractionService({ClaudeLabelReader? claude}) : _claude = claude;
 
-  factory ExtractionService.fromEnvironment() {
-    const key = String.fromEnvironment('CLAUDE_API_KEY');
-    return ExtractionService(claude: key.isEmpty ? null : ClaudeLabelReader(apiKey: key));
-  }
-
   final ClaudeLabelReader? _claude;
 
   bool get usesAi => _claude != null;

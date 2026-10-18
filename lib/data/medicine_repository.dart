@@ -1,48 +1,26 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/medicine.dart';
 
 /// Local, on-device store for the medicine cabinet.
 class MedicineRepository {
-  MedicineRepository._(this._db, this._imagesDir);
+  MedicineRepository(this._db, this._imagesDir);
 
   final Database _db;
   final Directory _imagesDir;
-
-  static Future<MedicineRepository> open() async {
-    final db = await openDatabase(
-      p.join(await getDatabasesPath(), 'medstock.db'),
-      version: 1,
-      onCreate: (db, version) => db.execute('''
-        CREATE TABLE medicines(
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          brand TEXT NOT NULL,
-          ingredients TEXT NOT NULL,
-          form TEXT NOT NULL,
-          expiry TEXT,
-          batch TEXT,
-          manufacturer TEXT,
-          quantity INTEGER NOT NULL,
-          unit TEXT NOT NULL,
-          image_path TEXT,
-          created_at TEXT NOT NULL
-        )
-      '''),
-    );
-    final docs = await getApplicationDocumentsDirectory();
-    final images = Directory(p.join(docs.path, 'label_photos'));
-    await images.create(recursive: true);
-    return MedicineRepository._(db, images);
-  }
 
   /// All medicines, soonest expiry first (unknown expiry last).
   Future<List<Medicine>> all() async {
     final rows = await _db.query('medicines', orderBy: 'expiry IS NULL, expiry ASC, brand COLLATE NOCASE');
     return rows.map(Medicine.fromMap).toList();
+  }
+
+  Future<Medicine?> byId(int id) async {
+    final rows = await _db.query('medicines', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : Medicine.fromMap(rows.first);
   }
 
   Future<Medicine> save(Medicine medicine) async {
@@ -56,7 +34,13 @@ class MedicineRepository {
   }
 
   Future<void> delete(Medicine medicine) async {
-    await _db.delete('medicines', where: 'id = ?', whereArgs: [medicine.id]);
+    await _db.transaction((txn) async {
+      // sqflite doesn't enforce foreign keys by default, so clean up by hand.
+      await txn.rawDelete(
+          'DELETE FROM dose_logs WHERE schedule_id IN (SELECT id FROM schedules WHERE medicine_id = ?)', [medicine.id]);
+      await txn.delete('schedules', where: 'medicine_id = ?', whereArgs: [medicine.id]);
+      await txn.delete('medicines', where: 'id = ?', whereArgs: [medicine.id]);
+    });
     final path = medicine.imagePath;
     if (path != null && p.isWithin(_imagesDir.path, path)) {
       final file = File(path);

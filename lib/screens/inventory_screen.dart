@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../data/medicine_repository.dart';
+import '../app_services.dart';
 import '../models/medicine.dart';
-import '../services/extraction_service.dart';
 import '../widgets/medicine_widgets.dart';
 import 'medicine_form_screen.dart';
 import 'scan_screen.dart';
@@ -10,10 +9,9 @@ import 'scan_screen.dart';
 enum _Filter { all, soon, expired }
 
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({super.key, required this.repository, required this.extraction});
+  const InventoryScreen({super.key, required this.services});
 
-  final MedicineRepository repository;
-  final ExtractionService extraction;
+  final AppServices services;
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -29,10 +27,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
   void initState() {
     super.initState();
     _load();
+    // Stock goes down when doses are marked as taken.
+    widget.services.doses.changes.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    widget.services.doses.changes.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
-    final items = await widget.repository.all();
+    final items = await widget.services.medicines.all();
     if (!mounted) return;
     setState(() {
       _items = items;
@@ -59,6 +65,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       if (q.isEmpty) return true;
       return m.brandName.toLowerCase().contains(q) ||
           m.ingredients.any((i) => i.name.toLowerCase().contains(q)) ||
+          m.uses.toLowerCase().contains(q) ||
           m.form.label.toLowerCase().contains(q);
     }).toList();
   }
@@ -73,11 +80,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           IconButton(
             tooltip: 'Check before buying',
             icon: const Icon(Icons.shopping_bag_outlined),
-            onPressed: () => _open(ScanScreen(
-              mode: ScanMode.check,
-              repository: widget.repository,
-              extraction: widget.extraction,
-            )),
+            onPressed: () => _open(ScanScreen(mode: ScanMode.check, services: widget.services)),
           ),
         ],
       ),
@@ -86,7 +89,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: SearchBar(
-              hintText: 'Search by name or ingredient',
+              hintText: 'Search name, ingredient or use (e.g. fever)',
               leading: const Icon(Icons.search),
               elevation: const WidgetStatePropertyAll(0),
               onChanged: (v) => setState(() => _query = v),
@@ -123,13 +126,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             title: Text(m.brandName, maxLines: 1, overflow: TextOverflow.ellipsis),
                             subtitle: Text(
                               [
-                                if (m.compositionSummary.isNotEmpty) m.compositionSummary,
+                                if (m.compositionSummary.isNotEmpty) m.compositionSummary
+                                else if (m.uses.isNotEmpty) m.uses,
                                 '${m.quantity} ${m.unit} left',
                               ].join('\n'),
                             ),
-                            isThreeLine: m.compositionSummary.isNotEmpty,
+                            isThreeLine: m.compositionSummary.isNotEmpty || m.uses.isNotEmpty,
                             trailing: ExpiryBadge(m),
-                            onTap: () => _open(MedicineFormScreen(repository: widget.repository, initial: m)),
+                            onTap: () => _open(MedicineFormScreen(services: widget.services, initial: m)),
                           );
                         },
                       ),
@@ -139,11 +143,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.document_scanner_outlined),
         label: const Text('Scan medicine'),
-        onPressed: () => _open(ScanScreen(
-          mode: ScanMode.add,
-          repository: widget.repository,
-          extraction: widget.extraction,
-        )),
+        onPressed: () => _open(ScanScreen(mode: ScanMode.add, services: widget.services)),
       ),
     );
   }

@@ -30,6 +30,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void initState() {
     super.initState();
     _load();
+    // Reports synced from another device.
+    widget.services.doses.changes.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    widget.services.doses.changes.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

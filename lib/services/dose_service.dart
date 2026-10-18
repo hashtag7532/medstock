@@ -61,6 +61,16 @@ class DoseService {
 
   Future<bool> requestPermission() => _notifications.requestPermission();
 
+  /// After sync brought in changes from another device.
+  Future<void> refreshAfterSync() async {
+    await _schedules.completeEnded();
+    await rescheduleAll();
+    changes.value++;
+  }
+
+  /// On sign-out: this user's reminders must not fire for the next user.
+  Future<void> shutdown() => _notifications.cancelAllPending();
+
   /// Applies reminder button presses queued while the app was closed.
   Future<void> processResponses() async {
     final queued = await _notifications.drainQueue();

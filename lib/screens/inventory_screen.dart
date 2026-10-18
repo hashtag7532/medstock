@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_services.dart';
 import '../models/medicine.dart';
+import '../widgets/account_sheet.dart';
 import '../widgets/medicine_widgets.dart';
 import 'medicine_form_screen.dart';
 import 'scan_screen.dart';
@@ -77,6 +78,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       appBar: AppBar(
         title: const Text('Medicine Cabinet'),
         actions: [
+          AccountButton(services: widget.services),
           IconButton(
             tooltip: 'Check before buying',
             icon: const Icon(Icons.shopping_bag_outlined),

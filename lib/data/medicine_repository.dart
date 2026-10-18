@@ -4,13 +4,16 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/medicine.dart';
+import 'app_database.dart';
+import 'ids.dart';
 
 /// Local, on-device store for the medicine cabinet.
 class MedicineRepository {
-  MedicineRepository(this._db, this._imagesDir);
+  MedicineRepository(this._storage);
 
-  final Database _db;
-  final Directory _imagesDir;
+  final AppStorage _storage;
+  Database get _db => _storage.db;
+  Directory get _imagesDir => _storage.labelPhotos;
 
   /// All medicines, soonest expiry first (unknown expiry last).
   Future<List<Medicine>> all() async {
@@ -25,22 +28,33 @@ class MedicineRepository {
 
   Future<Medicine> save(Medicine medicine) async {
     final withImage = medicine.copyWith(imagePath: await _persistImage(medicine.imagePath));
+    final sync = {'updated_at': nowStamp(), 'dirty': 1};
     if (withImage.id == null) {
-      final id = await _db.insert('medicines', withImage.toMap());
+      final id = await _db.insert('medicines', {...withImage.toMap(), ...sync, 'uid': newUuid()});
+      _storage.markChanged();
       return withImage.copyWith(id: id);
     }
-    await _db.update('medicines', withImage.toMap(), where: 'id = ?', whereArgs: [withImage.id]);
+    await _db.update('medicines', {...withImage.toMap(), ...sync}, where: 'id = ?', whereArgs: [withImage.id]);
+    _storage.markChanged();
     return withImage;
   }
 
   Future<void> delete(Medicine medicine) async {
     await _db.transaction((txn) async {
+      // Tell the server (and other devices) about the medicine and its schedules.
+      await txn.rawInsert(
+          "INSERT OR IGNORE INTO sync_deletes(table_name, uid) SELECT 'medicines', uid FROM medicines WHERE id = ? AND uid IS NOT NULL",
+          [medicine.id]);
+      await txn.rawInsert(
+          "INSERT OR IGNORE INTO sync_deletes(table_name, uid) SELECT 'schedules', uid FROM schedules WHERE medicine_id = ? AND uid IS NOT NULL",
+          [medicine.id]);
       // sqflite doesn't enforce foreign keys by default, so clean up by hand.
       await txn.rawDelete(
           'DELETE FROM dose_logs WHERE schedule_id IN (SELECT id FROM schedules WHERE medicine_id = ?)', [medicine.id]);
       await txn.delete('schedules', where: 'medicine_id = ?', whereArgs: [medicine.id]);
       await txn.delete('medicines', where: 'id = ?', whereArgs: [medicine.id]);
     });
+    _storage.markChanged();
     final path = medicine.imagePath;
     if (path != null && p.isWithin(_imagesDir.path, path)) {
       final file = File(path);

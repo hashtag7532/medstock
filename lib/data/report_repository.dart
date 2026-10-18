@@ -4,12 +4,15 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/lab_report.dart';
+import 'app_database.dart';
+import 'ids.dart';
 
 class ReportRepository {
-  ReportRepository(this._db, this._filesDir);
+  ReportRepository(this._storage);
 
-  final Database _db;
-  final Directory _filesDir;
+  final AppStorage _storage;
+  Database get _db => _storage.db;
+  Directory get _filesDir => _storage.reportFiles;
 
   /// All reports, newest first, with their results.
   Future<List<LabReport>> all() async {
@@ -25,12 +28,13 @@ class ReportRepository {
   Future<LabReport> save(LabReport report) async {
     final files = [for (final f in report.filePaths) await _persistFile(f)];
     final toSave = report.copyWith(filePaths: files);
-    return _db.transaction((txn) async {
+    final sync = {'updated_at': nowStamp(), 'dirty': 1};
+    final saved = await _db.transaction((txn) async {
       var id = toSave.id;
       if (id == null) {
-        id = await txn.insert('lab_reports', toSave.toMap());
+        id = await txn.insert('lab_reports', {...toSave.toMap(), ...sync, 'uid': newUuid()});
       } else {
-        await txn.update('lab_reports', toSave.toMap(), where: 'id = ?', whereArgs: [id]);
+        await txn.update('lab_reports', {...toSave.toMap(), ...sync}, where: 'id = ?', whereArgs: [id]);
         await txn.delete('lab_results', where: 'report_id = ?', whereArgs: [id]);
       }
       for (final result in toSave.results) {
@@ -38,13 +42,19 @@ class ReportRepository {
       }
       return toSave.copyWith(id: id);
     });
+    _storage.markChanged();
+    return saved;
   }
 
   Future<void> delete(LabReport report) async {
     await _db.transaction((txn) async {
+      await txn.rawInsert(
+          "INSERT OR IGNORE INTO sync_deletes(table_name, uid) SELECT 'lab_reports', uid FROM lab_reports WHERE id = ? AND uid IS NOT NULL",
+          [report.id]);
       await txn.delete('lab_results', where: 'report_id = ?', whereArgs: [report.id]);
       await txn.delete('lab_reports', where: 'id = ?', whereArgs: [report.id]);
     });
+    _storage.markChanged();
     for (final path in report.filePaths) {
       final file = File(path);
       if (p.isWithin(_filesDir.path, path) && await file.exists()) await file.delete();

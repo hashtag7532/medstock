@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 
 /// Build-time settings, passed with --dart-define. Defaults are for local
@@ -8,19 +10,28 @@ class AppConfig {
   static const authMode = String.fromEnvironment('AUTH_MODE', defaultValue: 'emulator');
   static bool get useEmulator => authMode == 'emulator';
 
-  /// The Mac as seen from the Android emulator is 10.0.2.2. On a real phone,
-  /// use your Mac's Wi-Fi IP address.
-  static const devHost = String.fromEnvironment('DEV_HOST', defaultValue: '10.0.2.2');
-  static const apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://$devHost:8080');
+  /// Your Mac as seen from the device: 10.0.2.2 from the Android emulator,
+  /// 127.0.0.1 from the iOS simulator. On a real phone, pass your Mac's Wi-Fi IP.
+  static const _devHost = String.fromEnvironment('DEV_HOST');
+  static String get devHost => _devHost.isNotEmpty ? _devHost : (Platform.isIOS ? '127.0.0.1' : '10.0.2.2');
+
+  static const _apiBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static String get apiBaseUrl => _apiBaseUrl.isNotEmpty ? _apiBaseUrl : 'http://$devHost:8080';
 
   static const _projectId = String.fromEnvironment('FIREBASE_PROJECT_ID', defaultValue: 'demo-medstock');
 
   /// A `demo-` project works with the emulator only and needs no Firebase setup.
   /// For a real project, pass the values from Firebase console > Project settings.
-  static FirebaseOptions get firebaseOptions => const FirebaseOptions(
-        apiKey: String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key'),
-        appId: String.fromEnvironment('FIREBASE_APP_ID', defaultValue: '1:000000000000:android:0000000000000000'),
-        messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID', defaultValue: '000000000000'),
+  /// On iOS, phone login also needs the app ID's URL scheme in Info.plist
+  /// (app-1-000000000000-ios-0000000000000000 for the demo project).
+  static const _appId = String.fromEnvironment('FIREBASE_APP_ID');
+
+  static FirebaseOptions get firebaseOptions => FirebaseOptions(
+        apiKey: const String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key'),
+        appId: _appId.isNotEmpty
+            ? _appId
+            : (Platform.isIOS ? '1:000000000000:ios:0000000000000000' : '1:000000000000:android:0000000000000000'),
+        messagingSenderId: const String.fromEnvironment('FIREBASE_SENDER_ID', defaultValue: '000000000000'),
         projectId: _projectId,
       );
 }

@@ -4,6 +4,8 @@ A home medicine cabinet for Indian families. Scan the medicines you have, track 
 
 Flutter app (Android, iOS) + Node.js API + PostgreSQL. Login is by phone number and OTP through Firebase Authentication.
 
+**Product docs:** [Product note](docs/product-note.md) (problem, TG, positioning, onboarding, what not to build, roadmap) · [User journeys](docs/user-journeys.md)
+
 ## Features
 
 **Medicine cabinet**

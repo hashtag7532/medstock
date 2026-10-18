@@ -2,7 +2,7 @@
 
 *v1 · October 2026 · Companion to the [product note](product-note.md)*
 
-Each journey lists the **goal**, the **trigger**, the **steps in v1** (what the app does today), **friction** (where users get stuck or drop off), and the **better version** to build next. Diagrams render on GitHub.
+Each journey lists the **goal**, the **trigger**, the **steps in v1** (what the app does today), **friction** (where users get stuck or drop off), and the **better version** to build next. Where an incentive applies, a **Rewards (planned)** step shows how it fits, following the incentive rules in the [product note §7.2](product-note.md#72-incentives-reward-actions-that-lead-to-orders): store credit tied to the next order or booking, verified, capped and expiring. Rewards are not in v1. Diagrams render on GitHub.
 
 | # | Journey | Who | Frequency |
 |---|---|---|---|
@@ -23,6 +23,9 @@ Each journey lists the **goal**, the **trigger**, the **steps in v1** (what the 
 | 15 | [No internet](#15-no-internet) | Everyone | Any time |
 | 16 | [Caregiver managing a parent remotely](#16-caregiver-managing-a-parent-remotely-future) | Primary TG | Weekly (future) |
 | 17 | [Sharing reports with a doctor](#17-sharing-reports-with-a-doctor-future) | Patient | Per consultation (future) |
+| 18 | [Arriving through a lab report or an order](#18-arriving-through-a-lab-report-or-an-order-planned) | Client's customer | Once (acquisition) |
+| 19 | [Referring a family member](#19-referring-a-family-member-planned) | Caregiver | Occasionally |
+| 20 | [Earning and spending credit](#20-earning-and-spending-credit-planned) | Everyone | Whenever a reward is earned |
 
 ---
 
@@ -57,6 +60,11 @@ flowchart LR
 - Ask for permissions at the moment they're needed (camera on first scan, notifications on first schedule). v1 already does this.
 - Show a reward after the first item, e.g. "Dolo 650 expires in 4 months. Add the rest to never buy twice."
 
+**Rewards (planned)**
+- The welcome screen shows what's on offer, once: *"Add 5 medicines: ₹X off your next order"* and *"Scan a prescription: discount on the medicines you don't have"*.
+- After the first item: a quiet progress line, "1 of 5 added: ₹X credit at 5". No pop-ups on later visits.
+- Users who arrive through a lab report or an order (journey 18) already have data, so they see the reward that fits them instead: a re-test discount or a refill credit.
+
 ---
 
 ## 2. Building the cabinet (bulk onboarding)
@@ -79,6 +87,12 @@ flowchart LR
 - **Auto-add from platform orders:** no effort at all.
 - **"Scan as you use":** after the first item, stop asking for more. Instead, nudge when the user opens a medicine they haven't added.
 - **Progress without pressure:** "6 medicines tracked", no percentage of an unknown total.
+
+**Rewards (planned)**
+- **First 5 medicines → one-time credit** on the next order (journey 20).
+- Only unique medicines count: the same brand and batch twice, or a photo that can't be read, doesn't. The confirm screen says so plainly: "Already in your cabinet: not counted."
+- Each medicine needs a valid expiry date to count, which also improves data quality.
+- After the first 5, adding medicines earns nothing more. The full cabinet is its own reward, and paying per item invites junk scans.
 
 ---
 
@@ -172,6 +186,7 @@ flowchart LR
   F & G --> H["Needs 10, you have 4: buy 6"]
   H --> I[Set up schedules]
   I --> J[Reminders start]
+  H -. planned .-> K[Order the missing ones, discount applied]
 ```
 
 **Steps in v1**
@@ -194,6 +209,12 @@ flowchart LR
 - **"Order the missing ones"** with the prescription attached: the natural cross-sell.
 - Default times configurable once (the family's breakfast and dinner times).
 - A drug database for brand-to-generic matching.
+
+**Rewards (planned)**
+- On the review screen, medicines that are prescribed but not at home show **"Order these 2: X% off"**. The client's cart opens pre-filled, with the prescription attached and the discount applied.
+- Valid for 48 hours, because the need is immediate.
+- Offered only for medicines that are on the prescription and not in stock. It never suggests extra products.
+- This is the strongest reward: the reward is the order itself.
 
 ---
 
@@ -251,6 +272,11 @@ sequenceDiagram
 - A push alert ("Papa's BP tablets run out in 5 days") with **Reorder**, which opens the platform's cart with the right quantity.
 - Optional auto-refill subscriptions for ongoing medicines.
 
+**Rewards (planned)**
+- **Course completed with most doses answered (80%+) → credit towards a refill** of an ongoing medicine.
+- The low-stock alert carries it: *"BP tablets run out in 5 days. Reorder: ₹X credit applied."*
+- No credit for short courses that simply end (an antibiotic finished). Nothing needs reordering there, and a reward would only push an unneeded purchase.
+
 ---
 
 ## 9. Expiry clean-up
@@ -269,6 +295,12 @@ sequenceDiagram
 - A monthly notification: "2 expired, 3 expire this month", leading to a review list with bulk **Remove**.
 - Disposal guidance and drop-off points.
 - **Replace** for expired medicines the household uses regularly.
+
+**Rewards (planned)**
+- Removing expired medicines that the household uses again and again (bought before, or on an ongoing course) offers **"Replace 2 expired: Y% off"**.
+- No replacement offer for one-off medicines nobody needs again.
+- To prevent gaming, a medicine counts only if it was in the cabinet for 30+ days before it expired. Adding already-expired items earns nothing.
+- Once per medicine.
 
 ---
 
@@ -304,6 +336,11 @@ flowchart LR
 - Reports from the platform's own lab arrive automatically with no reading step; ABHA/ABDM-linked labs too.
 - Review only the flagged and low-confidence values, and accept the rest in bulk.
 
+**Rewards (planned)**
+- After the **first** report is saved: *"Your next test with [client]: Z% off"*, valid for 60 days (journey 20).
+- To count, the report must read as a real lab report, with a sample date and at least 3 results. Only the first report is rewarded; later uploads aren't.
+- Reports delivered automatically from the client's own lab earn no upload reward, since there's no effort to reward. They get re-test reminders instead (journey 11).
+
 ---
 
 ## 11. Comparing reports: daily (dengue) and yearly (check-up)
@@ -328,6 +365,11 @@ flowchart LR
 - Home-collection booking with results flowing straight into the trend.
 - A pinned "watch" test during an acute episode (platelets, haematocrit) on the home screen.
 - A year-on-year comparison table for annual check-ups (this year vs last year vs two years ago, with change).
+
+**Rewards (planned)**
+- **During an acute episode (dengue):** after a daily report is added, *"Book tomorrow's home collection"*, using the first-report discount if it hasn't been spent.
+- **Annual check-up:** 11 months after the last one, *"Book this year's check-up and compare with last year"*, with a re-test discount.
+- Viewing reports and trends earns nothing. Rewards follow actions that lead to a booking.
 
 ---
 
@@ -409,6 +451,72 @@ flowchart LR
 
 ---
 
+## 18. Arriving through a lab report or an order (planned)
+
+**Goal:** start with a useful record on day one, with no effort and no incentive needed. **Trigger:** an SMS or WhatsApp from the client: "Your report is ready" or "Your order is delivered".
+
+```mermaid
+flowchart LR
+  A[Message: your report is ready] --> B[Open link: install or open app]
+  B --> C[Log in with the same number as the booking]
+  C --> D[Report already in Reports, values from the lab system]
+  D --> E{Earlier reports?}
+  E -- yes --> F[Trend and 'vs last time' shown]
+  E -- no --> G[Values with ranges and flags]
+  F & G --> H[Offer: add your medicines too]
+```
+
+**Planned steps**
+1. The message links to MedStock. Install, then log in with OTP on the same number used for the booking or order.
+2. **Lab report:** it's already in **Reports**, read from the lab's structured data, so no AI and no checking are needed. Earlier reports from the same lab show as a trend.
+3. **Order:** "Track these medicines?" One tap adds every item with batch and expiry. If a prescription was attached, reminders are offered.
+4. Only then does the app suggest the next step: "Add the medicines you already have", with the first-5 reward from journey 2.
+
+**Why it matters:** the user is activated at zero cost, and the record starts complete. It's the cheapest acquisition channel (product note §7.1).
+
+---
+
+## 19. Referring a family member (planned)
+
+**Goal:** bring parents or siblings in. **Trigger:** a caregiver wants a parent's medicines tracked too.
+
+**Planned steps**
+1. **Account → Invite family**, then share a link over WhatsApp.
+2. The family member installs and logs in with OTP on their own number.
+3. **Credit for both only after the new user's first order** (journey 20). Installing alone earns nothing.
+
+**Rules**
+- The new number must be new to the client: no rewards for inviting existing customers.
+- A cap per referrer (e.g. 5 rewarded referrals).
+
+---
+
+## 20. Earning and spending credit (planned)
+
+**Goal:** rewards that are easy to understand and bring an order back to the client. **Trigger:** any reward from journeys 1, 2, 6, 8, 9, 10, 11 or 19.
+
+```mermaid
+flowchart LR
+  A[Action: prescription, first report, first 5 medicines...] --> B{Checks}
+  B -- duplicate / unreadable / over cap --> X[Not counted, reason shown]
+  B -- valid --> C[Credit in wallet, expires in 30-60 days]
+  C --> D[Next order or lab booking]
+  D --> E[Credit applied at checkout]
+  E --> F[Order placed: counted as MedStock-driven revenue]
+```
+
+**Planned steps**
+1. When an action qualifies, a short confirmation: "₹X credit added, use it by 20 Nov."
+2. **Account → Rewards** shows the balance, the expiry dates and how each credit was earned.
+3. At checkout in the client's app or booking flow, credit is applied automatically, above a minimum order value.
+4. A reminder 5 days before credit expires. No further nagging.
+
+**When something doesn't count**, say why in one line ("Already in your cabinet", "Couldn't read a sample date on this report"). Never fail silently.
+
+**For the business:** every credit is tagged with the action that earned it. Orders that spend it count as MedStock-driven revenue, and each reward type is checked against a holdout group (product note §7.4).
+
+---
+
 ## Cross-journey principles
 
 - **One tap to finish:** every notification leads to an action completed in one tap.
@@ -416,3 +524,5 @@ flowchart LR
 - **Never diagnose or prescribe:** show what's at home and what the values are; send judgement to a doctor or pharmacist.
 - **Approximate beats empty:** a rough count today beats a perfect list never.
 - **Works offline, syncs later:** the phone is the source of truth for the moment; the server is the backup and the bridge between devices.
+- **Rewards follow real actions and pay out on orders:** store credit for the next order or booking, verified, capped and expiring. Never cash, never per item added, and never a condition for using the app.
+- **Never reward "don't buy":** telling a user they already have a medicine is a trust moment, not a transaction.

@@ -107,6 +107,8 @@ flutter run
 
 The API creates its tables on first start. In the app, enter any 10-digit mobile number. No SMS is sent: the OTP is printed in the emulator terminal and shown at http://localhost:4000/auth.
 
+The emulator saves its accounts to `server/emulator-data/` when stopped with Ctrl-C, so a number keeps the same account (and its data) across restarts. Avoid "Clear all data" in the emulator UI: a number logging in again then gets a new account, and the old data stays under the old one.
+
 **AI reading** (prescriptions, lab reports, better pack reading) needs a Claude API key:
 
 ```bash
@@ -187,20 +189,20 @@ They cover OTP login through the emulator, sync between two devices, newest-edit
 - Plain HTTP is allowed only to development addresses (10.0.2.2, localhost). Use HTTPS for any deployed API.
 - Health data: lab values and medicines are personal data under India's DPDP Act 2023. Get explicit consent and offer deletion before a public launch.
 
-## iOS notes
+## iOS
 
-iOS hasn't been built yet (needs Xcode). Before building:
-- set `platform :ios, '15.5'` in `ios/Podfile` (ML Kit);
-- add Firebase phone-auth setup (APNs, URL scheme from the iOS app's settings);
-- for reminder buttons, add to `ios/Runner/AppDelegate.swift`:
+Runs on the iOS simulator (tested on iPhone 18 Pro, iOS 27) with Xcode installed. With the emulator and API running:
 
-```swift
-import flutter_local_notifications
-// in application(_:didFinishLaunchingWithOptions:), before GeneratedPluginRegistrant:
-FlutterLocalNotificationsPlugin.setPluginRegistrantCallback { registry in
-  GeneratedPluginRegistrant.register(with: registry)
-}
+```bash
+open -a Simulator && flutter run
 ```
+
+- From the simulator, your Mac is `127.0.0.1` (the app picks this automatically on iOS).
+- On-device label reading uses **Apple Vision** on iOS and **ML Kit** on Android, both called directly from the app (`ios/Runner/AppDelegate.swift`, `android/.../MainActivity.kt`). ML Kit's iOS library doesn't run on Apple Silicon simulators, which is why iOS doesn't use it.
+- No CocoaPods: every iOS dependency comes through Swift Package Manager.
+- The simulator has no camera: use **Choose from gallery**, and add test photos with `xcrun simctl addmedia booted photo.jpg`.
+- **On a real iPhone:** connect it, enable Developer Mode, add your Apple ID in Xcode (Settings > Accounts), then `flutter run`. Pass `--dart-define=DEV_HOST=<your Mac's Wi-Fi IP>` so the phone can reach the API.
+- **Real Firebase OTP on iOS** needs push notifications (APNs) configured in Firebase, which requires a paid Apple Developer account. Development uses the emulator, so it isn't needed yet. Also replace the URL scheme in `ios/Runner/Info.plist` with your app's encoded app ID (Firebase console > Project settings > your iOS app).
 
 ## Roadmap
 

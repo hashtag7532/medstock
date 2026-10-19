@@ -27,7 +27,9 @@ class AppConfig {
   static const _appId = String.fromEnvironment('FIREBASE_APP_ID');
 
   static FirebaseOptions get firebaseOptions => FirebaseOptions(
-        apiKey: const String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'demo-api-key'),
+        // Placeholder for the emulator. The iOS SDK rejects keys that don't look
+        // real (39 characters, starting with "A"); the emulator never checks it.
+        apiKey: const String.fromEnvironment('FIREBASE_API_KEY', defaultValue: 'AIzaSyDemoKeyForLocalEmulatorOnly000000'),
         appId: _appId.isNotEmpty
             ? _appId
             : (Platform.isIOS ? '1:000000000000:ios:0000000000000000' : '1:000000000000:android:0000000000000000'),

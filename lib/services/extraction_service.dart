@@ -1,4 +1,4 @@
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:flutter/services.dart';
 
 import '../models/medicine.dart';
 import 'claude_label_reader.dart';
@@ -39,17 +39,15 @@ class ExtractionService {
     return ScanResult(draft: await _readOnDevice(imagePath), source: 'On-device OCR');
   }
 
+  /// Native on-device text recognition: ML Kit on Android (MainActivity.kt),
+  /// Apple Vision on iOS (AppDelegate.swift). Free and works offline.
+  static const _ocr = MethodChannel('medstock/ocr');
+
   Future<Medicine> _readOnDevice(String imagePath) async {
-    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    try {
-      final text = await recognizer.processImage(InputImage.fromFilePath(imagePath));
-      final lines = [
-        for (final block in text.blocks)
-          for (final line in block.lines) OcrLine(line.text, line.boundingBox.height),
-      ];
-      return const LabelParser().parse(lines, imagePath: imagePath);
-    } finally {
-      await recognizer.close();
-    }
+    final raw = await _ocr.invokeListMethod<Map<Object?, Object?>>('recognize', {'path': imagePath}) ?? const [];
+    final lines = [
+      for (final line in raw) OcrLine(line['text'] as String? ?? '', (line['height'] as num?)?.toDouble() ?? 0),
+    ];
+    return const LabelParser().parse(lines, imagePath: imagePath);
   }
 }

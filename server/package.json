@@ -11,7 +11,7 @@
     "start": "node --env-file-if-exists=.env src/index.js",
     "dev": "node --watch --env-file-if-exists=.env src/index.js",
     "migrate": "node --env-file-if-exists=.env src/migrate.js",
-    "emulator": "firebase emulators:start --only auth --project demo-medstock",
+    "emulator": "firebase emulators:start --only auth --project demo-medstock --import=./emulator-data --export-on-exit=./emulator-data",
     "test": "node --env-file-if-exists=.env --test test/"
   },
   "dependencies": {

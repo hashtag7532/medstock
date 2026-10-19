@@ -52,4 +52,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // On-device text recognition for label scanning (Latin script, model bundled in the app).
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
